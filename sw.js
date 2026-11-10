@@ -1,6 +1,6 @@
 // バレーボール戦術分析 Service Worker
 // アプリを更新したときは CACHE の番号を変えてください（例：v2 → v3）
-const CACHE = 'vb-tactics-v3';
+const CACHE = 'vb-tactics-v4';
 const ASSETS = ['./', './index.html', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
