@@ -1,0 +1,17 @@
+{
+  "name": "バレーボール戦術分析",
+  "short_name": "VB戦術分析",
+  "description": "試合中にチームと選手のデータを記録し、成功率やアタック・サーブのコースを分析するアプリ",
+  "lang": "ja",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#001F43",
+  "theme_color": "#001F43",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
