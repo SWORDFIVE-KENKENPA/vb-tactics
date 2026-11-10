@@ -142,6 +142,10 @@ h3{margin:0;font-size:17px}
 .rank .track{height:14px}
 .below{margin-top:12px}
 .sumgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.cgrid{max-height:250px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.minigrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.card.mini{padding:10px;cursor:pointer}
+.card.mini:active{box-shadow:0 0 0 3px var(--yellow)}
 
 /* stats */
 .stats-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -344,7 +348,7 @@ db.matches.forEach(normMatch);save();
 const M=()=>db.matches.find(m=>m.id===db.cur)||db.matches[0];
 const ui={tab:'record',team:'home',player:'',
   cmode:'input',ckind:'attack',shot:'spike',cplayer:'',from:null,to:null,
-  aKind:'attack',aShots:{spike:1,feint:1,roll:1},aSet:'all',aRes:'all',aPlayer:'all',aFrom:null,
+  aKind:'attack',aShots:{spike:1,feint:1,roll:1},aSet:'all',aRes:'all',aPlayer:'all',aFrom:null,aView:'all',clock:false,
   sSet:'all',pTeam:'home',
   pvTeam:'home',pvNo:'',pvSet:'all',pvKind:'attack'};
 
@@ -538,10 +542,10 @@ function summaryHTML(evs,k){
 const lineLegend=k=>`<div class="legend" style="align-items:center">${k==='attack'?Object.keys(SHOTS).map(s=>`<span style="display:flex;align-items:center;gap:4px">${shotIcon(s,'#001F43')}${SHOTS[s]}</span>`).join(''):'<span>サーブは実線で表示</span>'}</div>`;
 
 /* ================= コース分析タブ ================= */
-function courseFilter(){
+function courseFilter(ignorePlayer){
   const m=M(),k=ui.aKind;
   const base=m.events.filter(e=>e.course&&e.team==='away'&&e.cat===k&&(ui.aSet==='all'||e.set===+ui.aSet)&&(ui.aRes==='all'||e.res===ui.aRes)
-    &&(ui.aPlayer==='all'||e.player===ui.aPlayer)&&(k==='serve'||ui.aShots[e.course.shot]));
+    &&(ignorePlayer||ui.aPlayer==='all'||e.player===ui.aPlayer)&&(k==='serve'||ui.aShots[e.course.shot]));
   return{base,evs:ui.aFrom?base.filter(e=>e.course.from===ui.aFrom):base};
 }
 function renderCourse(){
@@ -552,11 +556,15 @@ function renderCourse(){
     const k=ui.ckind,ready=ui.from&&ui.to;
     p+=`<div class="group"><div class="glabel">相手チームの</div><div class="seg"><button class="${k==='attack'?'on':''}" data-act="ckind" data-v="attack">アタック</button><button class="${k==='serve'?'on':''}" data-act="ckind" data-v="serve">サーブ</button></div></div>`;
     if(k==='attack')p+=`<div class="group"><div class="glabel">打ち方</div><div class="seg">${Object.keys(SHOTS).map(s=>`<button class="shotbtn ${ui.shot===s?'on':''}" data-act="shot" data-v="${s}">${SHORT[s]}${shotIcon(s)}</button>`).join('')}</div></div>`;
-    if(aw.length)p+=`<div class="group"><div class="glabel">打った選手（任意）</div><div class="chips">${aw.map(x=>`<button class="pchip ${ui.cplayer===x.no?'on':''}" data-act="cplayer" data-v="${esc(x.no)}">${esc(x.no)}${x.name?' <small style="font-weight:500">'+esc(x.name)+'</small>':''}</button>`).join('')}</div></div>`;
+    p+=`<div class="group"><div class="glabel" style="display:flex;justify-content:space-between;align-items:center;gap:6px"><span>打った選手</span>${aw.length?`<button class="pchip ${ui.clock?'on':''}" data-act="clock" style="height:30px;font-size:12px;padding:0 10px">${ui.clock?'選手を固定中':'選手を固定する'}</button>`:''}</div>
+      ${aw.length?`<div class="pgrid cgrid">${aw.map(x=>`<button class="pbtn away ${ui.cplayer===x.no?'on':''}" data-act="cplayer" data-v="${esc(x.no)}"><span class="no">${esc(x.no)}</span><span><span class="nm">${esc(x.name||'—')}</span><br>${posTag(x)}</span></button>`).join('')}</div>`
+      :'<p class="note" style="margin:0">「試合・選手設定」で相手選手を登録すると、選手ごとにコースを記録できます。</p>'}</div>`;
     const st1=ui.from?'done':'cur',st2=ui.to?'done':(ui.from?'cur':''),st3=ready?'cur':'';
     court=courtSVG({id:'court',kind:k,input:true,sel:ui.from,to:ui.to,shot:ui.shot,
       faint:m.events.filter(e=>e.course&&e.cat===k&&e.set===m.set).slice(-4)});
+    const cp=ui.cplayer?findP('away',ui.cplayer):null;
     below=`<div class="card below">
+      <div class="selinfo" style="margin:0 0 8px">${cp?`打った選手：<b>${pName('away',cp.no)}</b>${posTag(cp)}${ui.clock?'<span class="muted">（固定中：記録後も選択したまま）</span>':''}`:'<span class="muted">打った選手：未選択（右の一覧から選ぶと選手別に記録されます）</span>'}</div>
       <div class="steps3">
         <div class="step ${st1}"><span class="num">1</span><span>${ui.from?`打点：<b>${slotLabel(ui.from)}</b>`:`相手コートの<b>${k==='serve'?'サーブ位置':'打点'}</b>をタップ`}</span></div>
         <div class="step ${st2}"><span class="num">2</span><span>${ui.to?`落下点：<b>${zoneLabel(ui.to.zone)}</b>`:'自コートの<b>落下点</b>をタップ'}</span></div>
@@ -565,21 +573,50 @@ function renderCourse(){
         <button class="btn" data-act="creset" ${ui.from||ui.to?'':'disabled'}>やり直し</button></div></div>`;
     const rec=m.events.filter(e=>e.course&&e.cat===k).slice(-8).reverse();
     p+=`<div class="glabel">コースの記録（直近）</div>
-      ${rec.length?`<ul class="log" style="max-height:220px">${rec.map(e=>`<li><span class="tag away">相${e.set}</span><span>${e.player?'<b>#'+esc(e.player)+'</b> ':''}${k==='attack'?SHORT[e.course.shot]+'：':''}${zoneLabel(e.course.zone)}・<b>${CL[k][e.res]}</b></span><button class="x" data-act="del" data-v="${e.id}">✕</button></li>`).join('')}</ul>`:'<p class="note" style="margin:0">まだ記録はありません。</p>'}
+      ${rec.length?`<ul class="log" style="max-height:150px">${rec.map(e=>`<li><span class="tag away">相${e.set}</span><span>${e.player?'<b>'+pName('away',e.player)+'</b> ':''}${k==='attack'?SHORT[e.course.shot]+'：':''}${zoneLabel(e.course.zone)}・<b>${CL[k][e.res]}</b></span><button class="x" data-act="del" data-v="${e.id}">✕</button></li>`).join('')}</ul>`:'<p class="note" style="margin:0">まだ記録はありません。</p>'}
       <p class="note" style="margin:8px 0 0">相手チームの${k==='serve'?'サーブ':'アタック'}統計にも自動で反映されます。</p>`;
   }else{
-    const k=ui.aKind,{base,evs}=courseFilter();
+    const k=ui.aKind,{base,evs}=courseFilter(),pv=ui.aView==='players';
+    p+=`<div class="group"><div class="glabel">表示方法</div><div class="seg"><button class="${!pv?'on':''}" data-act="aView" data-v="all">コート1面</button><button class="${pv?'on':''}" data-act="aView" data-v="players">選手別に並べる</button></div></div>`;
     p+=`<div class="group"><div class="glabel">表示する種類（相手チーム）</div><div class="seg"><button class="${k==='attack'?'on':''}" data-act="aKind" data-v="attack">アタック</button><button class="${k==='serve'?'on':''}" data-act="aKind" data-v="serve">サーブ</button></div></div>`;
     if(k==='attack')p+=`<div class="group"><div class="glabel">打ち方（複数選択可）</div><div class="seg">${Object.keys(SHOTS).map(s=>`<button class="shotbtn ${ui.aShots[s]?'on':''}" data-act="aShot" data-v="${s}">${SHORT[s]}${shotIcon(s)}</button>`).join('')}</div></div>`;
     p+=`<div class="group"><div class="glabel">セット</div><div class="chips">${['all',1,2,3,4,5].map(n=>`<button class="pchip ${String(ui.aSet)===String(n)?'on':''}" data-act="aSet" data-v="${n}">${n==='all'?'全セット':n}</button>`).join('')}</div></div>`;
     p+=`<div class="group"><div class="glabel">結果</div><div class="chips"><button class="pchip ${ui.aRes==='all'?'on':''}" data-act="aRes" data-v="all">すべて</button>${CATS[k].res.map(r=>`<button class="pchip ${ui.aRes===r.k?'on':''}" data-act="aRes" data-v="${r.k}"><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${LC[k][r.k]};margin-right:5px;box-shadow:0 0 0 1px #0002"></i>${CL[k][r.k]}</button>`).join('')}</div></div>`;
-    if(aw.length)p+=`<div class="group"><div class="glabel">選手</div><div class="chips"><button class="pchip ${ui.aPlayer==='all'?'on':''}" data-act="aPlayer" data-v="all">全員</button>${aw.map(x=>`<button class="pchip ${ui.aPlayer===x.no?'on':''}" data-act="aPlayer" data-v="${esc(x.no)}">${esc(x.no)}${x.name?' <small style="font-weight:500">'+esc(x.name)+'</small>':''}</button>`).join('')}</div></div>`;
+    if(aw.length&&!pv)p+=`<div class="group"><div class="glabel">選手</div><div class="chips"><button class="pchip ${ui.aPlayer==='all'?'on':''}" data-act="aPlayer" data-v="all">全員</button>${aw.map(x=>`<button class="pchip ${ui.aPlayer===x.no?'on':''}" data-act="aPlayer" data-v="${esc(x.no)}">${esc(x.no)}${x.name?' <small style="font-weight:500">'+esc(x.name)+'</small>':''}</button>`).join('')}</div></div>`;
     p+=`<div class="group"><div class="glabel">線の種類</div>${lineLegend(k)}</div>`;
+    if(pv){const r=playersCourseView(k);court=r.court;below=r.below}else{
     court=courtSVG({id:'court',kind:k,input:false,evs,fcEvs:base,sel:ui.aFrom});
-    below=`<div class="card below"><div class="cat-h"><h3>集計　<span style="color:var(--navy)">${evs.length}本</span></h3>
-      <span class="quick">${ui.aFrom?`打点：<b>${slotLabel(ui.aFrom)}</b>　<button class="pchip" data-act="aFrom" data-v="">絞り込み解除</button>`:'相手コートの打点をタップすると、その位置からのコースだけを表示'}</span></div>${summaryHTML(evs,k)}</div>`;
+    below=`<div class="card below"><div class="cat-h"><h3>${ui.aPlayer!=='all'?(ui.aPlayer?pName('away',ui.aPlayer):'選手指定なし')+'　':''}集計　<span style="color:var(--navy)">${evs.length}本</span></h3>
+      <span class="quick">${ui.aFrom?`打点：<b>${slotLabel(ui.aFrom)}</b>　<button class="pchip" data-act="aFrom" data-v="">絞り込み解除</button>`:'相手コートの打点をタップすると、その位置からのコースだけを表示'}${ui.aPlayer!=='all'?`　<button class="pchip" data-act="aView" data-v="players">← 選手別一覧へ</button>`:''}</span></div>${summaryHTML(evs,k)}</div>`;}
   }
-  $('#v-course').innerHTML=`<div class="course"><div><div class="court-box">${court}</div>${below}</div><div class="card panel">${p}</div></div>`;
+  $('#v-course').innerHTML=`<div class="course"><div>${court.startsWith('<svg')?`<div class="court-box">${court}</div>`:court}${below}</div><div class="card panel">${p}</div></div>`;
+}
+
+function playersCourseView(k){
+  const{evs}=courseFilter(true),aw=players('away');
+  const groups=aw.map(x=>x);
+  evs.forEach(e=>{if(e.player&&!groups.some(g=>g.no===e.player))groups.push({no:e.player,name:'',pos:''})});
+  groups.push({no:'',name:'選手指定なし',pos:''});
+  const rows=groups.map(x=>({x,ev:evs.filter(e=>e.player===x.no)})).filter(r=>r.ev.length);
+  if(!rows.length)return{court:`<div class="card"><p class="note" style="margin:0">条件に合うコースはまだありません。「入力」で打った選手を選んでから記録してください。</p></div>`,below:''};
+  const topZ=ev=>{const zc={};ev.forEach(e=>zc[e.course.zone]=(zc[e.course.zone]||0)+1);return Object.entries(zc).sort((a,b)=>b[1]-a[1])};
+  const zl=z=>z==='OUT'?'アウト':'ゾーン'+z;
+  const cards=rows.map((r,i)=>{const tz=topZ(r.ev),n=r.ev.length;
+    return`<div class="card mini" data-act="aPick" data-v="${esc(r.x.no)}"><div class="cat-h" style="margin-bottom:6px"><h3 style="font-size:15px">${r.x.no?'#'+esc(r.x.no)+' ':''}${esc(r.x.name)} ${posTag(r.x)}</h3>
+      <span class="quick"><b>${n}本</b>　最多 ${zl(tz[0][0])}（${Math.round(tz[0][1]/n*100)}%）</span></div>
+      <div class="court-box" style="padding:3px">${courtSVG({id:'mc'+i,kind:k,input:false,evs:r.ev,fcEvs:r.ev})}</div></div>`}).join('');
+  const kill=k==='attack'?'kill':'ace';
+  const head=k==='attack'?'<th>本数</th><th>強打</th><th>フェイント</th><th>ロール</th><th>最多ゾーン</th><th>2番目</th><th>決められた率</th><th>拾った率</th>'
+                         :'<th>本数</th><th>最多ゾーン</th><th>2番目</th><th>3番目</th><th>エース率</th><th>崩された率</th><th>相手ミス率</th>';
+  const pc=(a,b)=>b?Math.round(a/b*100)+'%':'—';
+  const body=rows.map(r=>{const ev=r.ev,n=ev.length,tz=topZ(ev),cnt=f=>ev.filter(f).length,z=i=>tz[i]?`${zl(tz[i][0])}（${tz[i][1]}）`:'—';
+    const cells=k==='attack'?`<td>${n}</td><td>${cnt(e=>e.course.shot==='spike')}</td><td>${cnt(e=>e.course.shot==='feint')}</td><td>${cnt(e=>e.course.shot==='roll')}</td><td class="hi">${z(0)}</td><td>${z(1)}</td><td class="hi">${pc(cnt(e=>e.res==='kill'),n)}</td><td>${pc(cnt(e=>e.res==='cont'),n)}</td>`
+      :`<td>${n}</td><td class="hi">${z(0)}</td><td>${z(1)}</td><td>${z(2)}</td><td class="hi">${pc(cnt(e=>e.res==='ace'),n)}</td><td>${pc(cnt(e=>e.res==='eff'),n)}</td><td>${pc(cnt(e=>e.res==='err'),n)}</td>`;
+    return`<tr class="link" data-act="aPick" data-v="${esc(r.x.no)}"><td class="p">${r.x.no?'#'+esc(r.x.no):''}</td><td class="l">${esc(r.x.name)}</td><td>${r.x.pos?`<span class="pos">${r.x.pos}</span>`:''}</td>${cells}</tr>`}).join('');
+  return{court:`<div class="minigrid">${cards}</div>`,
+    below:`<div class="card below"><div class="cat-h"><h3>選手別の比較（${k==='attack'?'アタック':'サーブ'}）</h3><span class="quick">カードか行をタップすると、その選手のコートを大きく表示</span></div>
+      <div class="tablewrap"><table class="ptable"><thead><tr><th>No.</th><th>氏名</th><th>Pos</th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+      <div style="margin-top:8px">${lineLegend(k)}</div></div>`};
 }
 
 /* ================= チーム統計 ================= */
@@ -729,9 +766,9 @@ function renderSetup(){
     <h2>使い方メモ</h2>
     <div class="note">
       <b>記録入力</b>：左でチームと選手を選び、項目ボタンをタップ。誤入力は「取り消し」か ✕ で削除。得点は上部のスコアをタップ（−で減点）。<br>
-      <b>コース分析</b>：左が相手コート、右が自コート。①相手の打点 → ②自コートの落下点 → ③結果 の順にタップ。強打＝実線、フェイント＝点線、ロール＝波線。<br>
+      <b>コース分析</b>：左が相手コート、右が自コート。打った選手を選び、①相手の打点 → ②自コートの落下点 → ③結果 の順にタップ。「選手を固定する」で同じ選手を続けて記録できます。「分析・表示」→「選手別に並べる」で選手ごとのコート図を比較できます。強打＝実線、フェイント＝点線、ロール＝波線。<br>
       <b>ゾーン番号</b>：自コートはネット側（前列）が 4・3・2、中列 7・8・9、エンドライン側 5・6・1（いずれも画面下→上の順）。<br>
-      <b>選手分析</b>：選手ごとの成功率・効果率をチーム全体と比較し、セット別の推移とコース傾向を表示します。<br><span class="muted">バージョン 2026.11.10b</span>
+      <b>選手分析</b>：選手ごとの成功率・効果率をチーム全体と比較し、セット別の推移とコース傾向を表示します。<br><span class="muted">バージョン 2026.11.10c</span>
     </div>
   </div></div>`;
 }
@@ -767,10 +804,13 @@ const ACT={
   ckind(v){ui.ckind=v;ui.from=null;ui.to=null;renderCourse()},
   shot(v){ui.shot=v;renderCourse()},
   cplayer(v){ui.cplayer=ui.cplayer===v?'':v;renderCourse()},
+  clock(){ui.clock=!ui.clock;renderCourse()},
+  aView(v){ui.aView=v;ui.aFrom=null;renderCourse()},
+  aPick(v){ui.aView='all';ui.aPlayer=v;ui.aFrom=null;renderCourse();window.scrollTo(0,0)},
   creset(){ui.from=null;ui.to=null;renderCourse()},
   cres(v){if(!ui.from||!ui.to)return;const k=ui.ckind;
     addEvent({team:'away',player:ui.cplayer,cat:k,res:v,course:{from:ui.from,x:ui.to.x,y:ui.to.y,zone:ui.to.zone,shot:k==='attack'?ui.shot:null}});
-    ui.from=null;ui.to=null;ui.cplayer='';renderCourse()},
+    ui.from=null;ui.to=null;if(!ui.clock)ui.cplayer='';renderCourse()},
   aKind(v){ui.aKind=v;ui.aRes='all';ui.aFrom=null;renderCourse()},
   aShot(v){ui.aShots[v]=ui.aShots[v]?0:1;renderCourse()},
   aSet(v){ui.aSet=v;renderCourse()},
@@ -839,7 +879,7 @@ try{screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landsc
 if(!storageOK)$('#banner').style.display='block';
 renderView();
 /* ===== PWA：オフライン対応（HTTPSのサーバーに置いたときのみ有効） ===== */
-const APP_VERSION='2026.11.10b';
+const APP_VERSION='2026.11.10c';
 function updateOnline(){const b=$('#offline-badge');if(b)b.style.display=navigator.onLine?'none':'inline-block'}
 window.addEventListener('online',()=>{updateOnline()});window.addEventListener('offline',()=>{updateOnline()});
 const _rh=renderHeader;renderHeader=function(){_rh();updateOnline()};updateOnline();
